@@ -19,6 +19,8 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
   const [recordingTrackId, setRecordingTrackId] = useState<string | null>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
+  const [voiceCloneProgress, setVoiceCloneProgress] = useState<Record<string, number>>({});
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   const handleFileUpload = useCallback((trackId: string, file: File) => {
     const audioFile: AudioFile = {
@@ -35,29 +37,99 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
       const existing = prev.filter(v => v.id !== audioFile.id);
       return [...existing, audioFile];
     });
+
+    // Start voice cloning process
+    startVoiceCloning(trackId, audioFile);
   }, []);
 
+  const startVoiceCloning = async (trackId: string, voiceSample: AudioFile) => {
+    setIsProcessingVoice(true);
+    setVoiceCloneProgress(prev => ({ ...prev, [trackId]: 0 }));
+
+    // Simulate voice cloning process
+    const stages = [
+      'Analyzing voice characteristics...',
+      'Extracting vocal features...',
+      'Training voice model...',
+      'Converting original vocals...',
+      'Applying voice transformation...',
+      'Finalizing audio...'
+    ];
+
+    for (let i = 0; i < stages.length; i++) {
+      const progress = ((i + 1) / stages.length) * 100;
+      setVoiceCloneProgress(prev => ({ ...prev, [trackId]: progress }));
+      
+      // Simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    setIsProcessingVoice(false);
+  };
+
   const handleRecording = useCallback(async (trackId: string) => {
-    if (isRecording) {
-      // Stop recording logic would go here
+    if (isRecording && recordingTrackId === trackId) {
+      // Stop recording
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+      }
+      setIsRecording(false);
+      setRecordingTrackId(null);
+    } else if (isRecording) {
+      // Already recording another track, stop that first
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+      }
       setIsRecording(false);
       setRecordingTrackId(null);
     } else {
-      // Start recording logic would go here
-      setIsRecording(true);
-      setRecordingTrackId(trackId);
-      
+      // Start recording
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Recording implementation would go here
-        console.log('Recording started for track:', trackId);
+        const recorder = new MediaRecorder(stream);
+        
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            setRecordingChunks(prev => [...prev, event.data]);
+          }
+        };
+
+        recorder.onstop = () => {
+          const audioBlob = new Blob(recordingChunks, { type: 'audio/wav' });
+          const audioFile: AudioFile = {
+            id: `user-vocal-${trackId}`,
+            name: `Recording-${trackId}.wav`,
+            size: audioBlob.size,
+            type: 'audio/wav',
+            file: new File([audioBlob], `Recording-${trackId}.wav`, { type: 'audio/wav' }),
+            duration: 0,
+            url: URL.createObjectURL(audioBlob)
+          };
+
+          setUserVocals(prev => {
+            const existing = prev.filter(v => v.id !== audioFile.id);
+            return [...existing, audioFile];
+          });
+
+          // Start voice cloning process
+          startVoiceCloning(trackId, audioFile);
+          
+          setRecordingChunks([]);
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        setMediaRecorder(recorder);
+        setRecordingChunks([]);
+        recorder.start();
+        setIsRecording(true);
+        setRecordingTrackId(trackId);
       } catch (error) {
         console.error('Error accessing microphone:', error);
         setIsRecording(false);
         setRecordingTrackId(null);
       }
     }
-  }, [isRecording]);
+  }, [isRecording, recordingTrackId, mediaRecorder, recordingChunks]);
 
   const handlePlayOriginal = useCallback((trackId: string) => {
     if (currentlyPlaying === trackId) {
@@ -70,6 +142,17 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
   const canProceed = vocalTracks.length === 1 ? userVocals.length >= 1 : userVocals.length >= 1;
 
   const handleContinue = () => {
+    // Only proceed if voice cloning is complete
+    const allProcessed = vocalTracks.every(track => {
+      const userVocal = userVocals.find(v => v.id === `user-vocal-${track.id}`);
+      return userVocal && voiceCloneProgress[track.id] === 100;
+    });
+
+    if (!allProcessed) {
+      alert('Please wait for voice processing to complete');
+      return;
+    }
+
     onVocalUpload(userVocals);
   };
 
@@ -95,8 +178,8 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
         <h2 className="text-3xl font-bold text-white">Replace Vocals</h2>
         <p className="text-gray-300 max-w-2xl mx-auto">
           {vocalTracks.length === 1 
-            ? "Upload or record your vocal to replace the original singer"
-            : "Upload or record vocals for each detected singer"
+            ? "Upload or record a sample of your voice. Our AI will learn your voice and make you sing the entire song!"
+            : "Upload or record voice samples. Our AI will clone your voice to sing as each detected singer"
           }
         </p>
       </div>
@@ -154,25 +237,64 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
 
                   {/* User Vocal Status */}
                   {userVocal ? (
-                    <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                            <Mic className="w-4 h-4 text-white" />
+                    <div className={`
+                      border rounded-lg p-4 transition-all duration-500
+                      ${voiceCloneProgress[track.id] === 100 
+                        ? 'bg-green-500/10 border-green-500/20' 
+                        : 'bg-purple-500/10 border-purple-500/20'
+                      }
+                    `}>
+                      {voiceCloneProgress[track.id] === 100 ? (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                              <Mic className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-green-400 font-medium">Voice Cloned Successfully!</p>
+                              <p className="text-gray-400 text-sm">Ready to sing the entire song in your voice</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-green-400 font-medium">Vocal Ready</p>
-                            <p className="text-gray-400 text-sm">{userVocal.name}</p>
+                          <button className="text-green-400 hover:text-green-300 text-sm">
+                            Change Sample
+                          </button>
+                        </div>
+                      ) : voiceCloneProgress[track.id] > 0 ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                            <div>
+                              <p className="text-purple-400 font-medium">Cloning Your Voice...</p>
+                              <p className="text-gray-400 text-sm">AI is learning how you sound</p>
+                            </div>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-2">
+                            <div 
+                              className="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${voiceCloneProgress[track.id]}%` }}
+                            ></div>
+                          </div>
+                          <p className="text-purple-400 text-xs">{Math.round(voiceCloneProgress[track.id])}% complete</p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                              <Mic className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-blue-400 font-medium">Voice Sample Ready</p>
+                              <p className="text-gray-400 text-sm">Starting voice analysis...</p>
+                            </div>
                           </div>
                         </div>
-                        <button className="text-green-400 hover:text-green-300 text-sm">
-                          Change
-                        </button>
-                      </div>
+                      )}
                     </div>
                   ) : (
                     <div className="border-2 border-dashed border-gray-600 rounded-lg p-4">
-                      <p className="text-gray-400 text-center mb-4">No vocal uploaded yet</p>
+                      <p className="text-gray-400 text-center mb-4">Upload a voice sample (10-30 seconds recommended)</p>
                     </div>
                   )}
                 </div>
@@ -220,19 +342,23 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
 
       {/* Instructions */}
       <div className="max-w-2xl mx-auto bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-2xl p-6">
-        <h4 className="text-lg font-semibold text-white mb-3">🎤 Recording Tips</h4>
+        <h4 className="text-lg font-semibold text-white mb-3">🎤 Voice Cloning Tips</h4>
         <ul className="space-y-2 text-gray-300">
+          <li className="flex items-start space-x-2">
+            <span className="text-blue-400 mt-1">•</span>
+            <span>Record 10-30 seconds of clear speech or singing for best results</span>
+          </li>
           <li className="flex items-start space-x-2">
             <span className="text-blue-400 mt-1">•</span>
             <span>Use a quiet environment with minimal background noise</span>
           </li>
           <li className="flex items-start space-x-2">
             <span className="text-blue-400 mt-1">•</span>
-            <span>Keep consistent distance from your microphone</span>
+            <span>Speak naturally - the AI will learn your unique voice characteristics</span>
           </li>
           <li className="flex items-start space-x-2">
             <span className="text-blue-400 mt-1">•</span>
-            <span>Try to match the timing and energy of the original vocal</span>
+            <span>The AI will make you sing the entire song in your voice style</span>
           </li>
         </ul>
       </div>
@@ -241,20 +367,20 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
       <div className="text-center">
         <button
           onClick={handleContinue}
-          disabled={!canProceed}
+          disabled={!canProceed || isProcessingVoice}
           className={`
             px-8 py-4 font-medium rounded-xl transition-all duration-200 transform
-            ${canProceed
+            ${canProceed && !isProcessingVoice
               ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 hover:scale-105'
               : 'bg-gray-700 text-gray-400 cursor-not-allowed'
             }
           `}
         >
-          Continue to Preview
+          {isProcessingVoice ? 'Processing Voice...' : 'Continue to Preview'}
         </button>
-        {!canProceed && (
+        {(!canProceed || isProcessingVoice) && (
           <p className="text-gray-400 text-sm mt-2">
-            Upload at least one vocal to continue
+            {isProcessingVoice ? 'AI is cloning your voice...' : 'Upload at least one voice sample to continue'}
           </p>
         )}
       </div>

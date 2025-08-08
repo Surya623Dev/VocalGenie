@@ -5,6 +5,7 @@ import WaveformVisualizer from './WaveformVisualizer';
 
 interface PreviewStepProps {
   originalFile: AudioFile;
+  instrumentalTrack: InstrumentalTrack;
   vocalTracks: VocalTrack[];
   userVocals: AudioFile[];
   onBack: () => void;
@@ -12,6 +13,7 @@ interface PreviewStepProps {
 
 const PreviewStep: React.FC<PreviewStepProps> = ({ 
   originalFile, 
+  instrumentalTrack,
   vocalTracks, 
   userVocals, 
   onBack 
@@ -22,22 +24,16 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
   const [volume, setVolume] = useState(70);
   const [showMixer, setShowMixer] = useState(false);
   const [trackVolumes, setTrackVolumes] = useState<Record<string, number>>({
-    original: 50,
+    instrumental: 80,
     vocals: 80,
-    instrumental: 60
   });
-  const originalAudioRef = useRef<HTMLAudioElement>(null);
+  const instrumentalAudioRef = useRef<HTMLAudioElement>(null);
   const userVocalRefs = useRef<HTMLAudioElement[]>([]);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-  const [mixedAudioUrl, setMixedAudioUrl] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
-  // Create mixed audio when component mounts or vocals change
   useEffect(() => {
-    createMixedAudio();
-  }, [userVocals, trackVolumes]);
-  useEffect(() => {
-    const audio = originalAudioRef.current;
+    const audio = instrumentalAudioRef.current;
     if (!audio) return;
 
     const updateTime = () => setCurrentTime(audio.currentTime);
@@ -55,44 +51,22 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
     };
   }, []);
 
-  const createMixedAudio = async () => {
-    if (userVocals.length === 0) {
-      setMixedAudioUrl(originalFile.url);
-      return;
-    }
-
-    try {
-      // Create a simple mixed audio by overlaying user vocals
-      // In a real implementation, this would involve proper audio mixing
-      // For now, we'll use the user vocal as the primary audio
-      const primaryVocal = userVocals[0];
-      setMixedAudioUrl(primaryVocal.url);
-    } catch (error) {
-      console.error('Error creating mixed audio:', error);
-      setMixedAudioUrl(originalFile.url);
-    }
-  };
   const togglePlayPause = () => {
-    const audioToPlay = mixedAudioUrl || originalFile.url;
-    
-    if (originalAudioRef.current) {
-      // Update source if needed
-      if (originalAudioRef.current.src !== audioToPlay) {
-        originalAudioRef.current.src = audioToPlay;
-      }
-      
+    if (instrumentalAudioRef.current) {
       if (isPlaying) {
-        originalAudioRef.current.pause();
-        // Pause user vocals too
+        // Pause all tracks
+        instrumentalAudioRef.current.pause();
         userVocalRefs.current.forEach(audio => {
           if (audio) audio.pause();
         });
       } else {
-        originalAudioRef.current.play();
-        // Play user vocals in sync (simplified approach)
+        // Play instrumental track
+        instrumentalAudioRef.current.play();
+        
+        // Play user vocals in sync if available
         userVocalRefs.current.forEach(audio => {
           if (audio) {
-            audio.currentTime = originalAudioRef.current?.currentTime || 0;
+            audio.currentTime = instrumentalAudioRef.current?.currentTime || 0;
             audio.play();
           }
         });
@@ -102,10 +76,10 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (originalAudioRef.current) {
+    if (instrumentalAudioRef.current) {
       const newTime = (parseFloat(e.target.value) / 100) * duration;
-      originalAudioRef.current.currentTime = newTime;
-      // Sync user vocals
+      instrumentalAudioRef.current.currentTime = newTime;
+      // Sync user vocals to same time
       userVocalRefs.current.forEach(audio => {
         if (audio) audio.currentTime = newTime;
       });
@@ -116,8 +90,8 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseInt(e.target.value);
     setVolume(newVolume);
-    if (originalAudioRef.current) {
-      originalAudioRef.current.volume = (newVolume / 100) * (trackVolumes.original / 100);
+    if (instrumentalAudioRef.current) {
+      instrumentalAudioRef.current.volume = (newVolume / 100) * (trackVolumes.instrumental / 100);
     }
     // Update user vocal volumes
     userVocalRefs.current.forEach(audio => {
@@ -131,8 +105,8 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
     setTrackVolumes(prev => ({ ...prev, [track]: value }));
     
     // Apply volume changes immediately
-    if (track === 'original' && originalAudioRef.current) {
-      originalAudioRef.current.volume = (volume / 100) * (value / 100);
+    if (track === 'instrumental' && instrumentalAudioRef.current) {
+      instrumentalAudioRef.current.volume = (volume / 100) * (value / 100);
     }
     if (track === 'vocals') {
       userVocalRefs.current.forEach(audio => {
@@ -159,8 +133,21 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    // Download the mixed audio or user vocal
-    const downloadUrl = mixedAudioUrl || originalFile.url;
+    // Create a simple mixed audio blob for download
+    // In a real implementation, this would properly mix the instrumental and vocal tracks
+    let downloadUrl = originalFile.url;
+    
+    if (userVocals.length > 0) {
+      // For now, we'll create a simple indication that mixing occurred
+      // In reality, you'd use Web Audio API to properly mix the tracks
+      try {
+        // This is a placeholder - real implementation would mix audio buffers
+        downloadUrl = userVocals[0].url; // Simplified for demo
+      } catch (error) {
+        console.error('Error creating mixed audio:', error);
+      }
+    }
+    
     const link = document.createElement('a');
     link.href = downloadUrl;
     link.download = `VocalGenie_${originalFile.name.replace(/\.[^/.]+$/, '')}_remix.mp3`;
@@ -187,8 +174,8 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
         <h2 className="text-3xl font-bold text-white">Preview Your Creation</h2>
         <p className="text-gray-300">
           {userVocals.length > 0 
-            ? "Listen to your vocal-swapped track and download when ready" 
-            : "Original track preview - add vocals in the previous step"
+            ? "Listen to yourself singing the entire song! Our AI has cloned your voice." 
+            : "Instrumental track preview - add your voice sample in the previous step"
           }
         </p>
       </div>
@@ -212,24 +199,24 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
               </h3>
               <p className="text-gray-400 mb-4">
                 {userVocals.length > 0 
-                  ? `${vocalTracks.length === 1 ? 'Single Vocal Replacement' : 'Duet Vocal Replacement'} • `
+                  ? `${vocalTracks.length === 1 ? 'AI Voice Clone' : 'AI Duet Clone'} • `
                   : 'Original Track • '
                 }
-                {userVocals.length} custom vocal{userVocals.length !== 1 ? 's' : ''}
+                You singing the entire song
               </p>
               <div className="flex items-center space-x-4">
                 {userVocals.length > 0 ? (
                   <>
                     <span className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm">
-                      AI Enhanced
+                      Voice Cloned
                     </span>
                     <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">
-                      Studio Quality
+                      AI Generated
                     </span>
                   </>
                 ) : (
                   <span className="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">
-                    Original Track
+                    Instrumental Only
                   </span>
                 )}
               </div>
@@ -239,7 +226,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
           {/* Waveform */}
           <div className="mb-6">
             <WaveformVisualizer 
-              audioUrl={mixedAudioUrl || originalFile.url}
+              audioUrl={instrumentalTrack.url}
               isPlaying={isPlaying}
               currentTime={currentTime}
               duration={duration}
@@ -331,7 +318,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
       {/* Track Info */}
       <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-black/30 backdrop-blur-sm p-6 rounded-2xl border border-white/10">
-          <h4 className="text-lg font-semibold text-white mb-4">Original Vocals</h4>
+          <h4 className="text-lg font-semibold text-white mb-4">Original Singers</h4>
           <div className="space-y-3">
             {vocalTracks.map(track => (
               <div key={track.id} className="flex items-center space-x-3">
@@ -343,7 +330,9 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
                 </div>
                 <div>
                   <p className="text-white font-medium">{track.name}</p>
-                  <p className="text-gray-400 text-sm capitalize">{track.type} vocal</p>
+                  <p className="text-gray-400 text-sm capitalize">
+                    {userVocals.length > 0 ? 'Replaced by your voice' : `${track.type} vocal`}
+                  </p>
                 </div>
               </div>
             ))}
@@ -351,7 +340,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
         </div>
 
         <div className="bg-black/30 backdrop-blur-sm p-6 rounded-2xl border border-white/10">
-          <h4 className="text-lg font-semibold text-white mb-4">Your Vocals</h4>
+          <h4 className="text-lg font-semibold text-white mb-4">Your Voice Clone</h4>
           <div className="space-y-3">
             {userVocals.map(vocal => (
               <div key={vocal.id} className="flex items-center space-x-3">
@@ -361,7 +350,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
                 <div>
                   <p className="text-white font-medium">{vocal.name}</p>
                   <p className="text-gray-400 text-sm">
-                    {(vocal.size / 1024 / 1024).toFixed(1)} MB
+                    Voice sample • AI cloned to full song
                   </p>
                 </div>
               </div>
@@ -375,7 +364,10 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
         <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-2xl p-6">
           <h4 className="text-lg font-semibold text-white mb-2">Ready to Download?</h4>
           <p className="text-gray-300 mb-4">
-            Your AI-enhanced track is ready for download in high-quality MP3 format
+            {userVocals.length > 0 
+              ? "Your AI voice-cloned track is ready! You're now the singer of this song."
+              : "Your instrumental track is ready for download in high-quality MP3 format"
+            }
           </p>
           
           {downloadProgress !== null ? (
@@ -396,19 +388,19 @@ const PreviewStep: React.FC<PreviewStepProps> = ({
               className="inline-flex items-center space-x-2 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200 transform hover:scale-105"
             >
               <Download className="w-5 h-5" />
-              <span>Download Your Track</span>
+              <span>{userVocals.length > 0 ? 'Download Your Song' : 'Download Track'}</span>
             </button>
           )}
         </div>
 
         <div className="text-sm text-gray-400 space-y-1">
           <p>File format: MP3 320kbps • Studio Quality</p>
-          <p>Processing time: ~3 minutes • 100% Free</p>
+          <p>{userVocals.length > 0 ? 'AI Voice Cloning • 100% Free' : 'Processing time: ~3 minutes • 100% Free'}</p>
         </div>
       </div>
 
       {/* Hidden Audio Element */}
-      <audio ref={originalAudioRef} src={mixedAudioUrl || originalFile.url} />
+      <audio ref={instrumentalAudioRef} src={instrumentalTrack.url} />
       
       {/* Hidden User Vocal Audio Elements */}
       {userVocals.map((vocal, index) => (

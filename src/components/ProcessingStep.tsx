@@ -68,7 +68,7 @@ const ProcessingStep: React.FC<ProcessingStepProps> = ({
               id: 'vocal-1',
               name: 'Male Vocal',
               type: 'male',
-              url: audioFile.url,
+              url: audioFile.url, // This would be the separated vocal track
               duration: 180,
               confidence: 0.92
             },
@@ -76,7 +76,7 @@ const ProcessingStep: React.FC<ProcessingStepProps> = ({
               id: 'vocal-2', 
               name: 'Female Vocal',
               type: 'female',
-              url: audioFile.url,
+              url: audioFile.url, // This would be the separated vocal track
               duration: 180,
               confidence: 0.89
             }
@@ -86,14 +86,23 @@ const ProcessingStep: React.FC<ProcessingStepProps> = ({
               id: 'vocal-1',
               name: 'Main Vocal',
               type: Math.random() > 0.5 ? 'male' : 'female',
-              url: audioFile.url,
+              url: audioFile.url, // This would be the separated vocal track
               duration: 180,
               confidence: 0.95
             }
           ];
 
+      // Create instrumental track (vocals removed)
+      // In real implementation, this would be the result of vocal separation
+      const instrumentalTrack = {
+        id: 'instrumental',
+        name: 'Instrumental',
+        url: audioFile.url, // This would be the instrumental-only track
+        duration: 180
+      };
+
       setTimeout(() => {
-        onProcessingComplete(tracks);
+        onProcessingComplete(tracks, instrumentalTrack);
       }, 1000);
     };
 

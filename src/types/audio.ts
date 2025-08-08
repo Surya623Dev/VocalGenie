@@ -17,4 +17,11 @@ export interface VocalTrack {
   confidence: number;
 }
 
+export interface InstrumentalTrack {
+  id: string;
+  name: string;
+  url: string;
+  duration: number;
+}
+
 export type ProcessingStep = 'upload' | 'processing' | 'replace' | 'preview';

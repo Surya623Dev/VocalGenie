@@ -5,12 +5,13 @@ import UploadStep from './components/UploadStep';
 import ProcessingStep from './components/ProcessingStep';
 import VocalReplaceStep from './components/VocalReplaceStep';
 import PreviewStep from './components/PreviewStep';
-import { AudioFile, VocalTrack, ProcessingStep as Step } from './types/audio';
+import { AudioFile, VocalTrack, InstrumentalTrack, ProcessingStep as Step } from './types/audio';
 
 function App() {
   const [currentStep, setCurrentStep] = useState<Step>('upload');
   const [uploadedFile, setUploadedFile] = useState<AudioFile | null>(null);
   const [vocalTracks, setVocalTracks] = useState<VocalTrack[]>([]);
+  const [instrumentalTrack, setInstrumentalTrack] = useState<InstrumentalTrack | null>(null);
   const [userVocals, setUserVocals] = useState<AudioFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -19,8 +20,9 @@ function App() {
     setCurrentStep('processing');
   }, []);
 
-  const handleProcessingComplete = useCallback((tracks: VocalTrack[]) => {
+  const handleProcessingComplete = useCallback((tracks: VocalTrack[], instrumental: InstrumentalTrack) => {
     setVocalTracks(tracks);
+    setInstrumentalTrack(instrumental);
     setCurrentStep('replace');
   }, []);
 
@@ -138,9 +140,10 @@ function App() {
             />
           )}
           
-          {currentStep === 'preview' && uploadedFile && (
+          {currentStep === 'preview' && uploadedFile && instrumentalTrack && (
             <PreviewStep 
               originalFile={uploadedFile}
+              instrumentalTrack={instrumentalTrack}
               vocalTracks={vocalTracks}
               userVocals={userVocals}
               onBack={handleBack}
