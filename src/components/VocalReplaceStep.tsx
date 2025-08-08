@@ -17,6 +17,8 @@ const VocalReplaceStep: React.FC<VocalReplaceStepProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
   const [recordingTrackId, setRecordingTrackId] = useState<string | null>(null);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
 
   const handleFileUpload = useCallback((trackId: string, file: File) => {
     const audioFile: AudioFile = {
